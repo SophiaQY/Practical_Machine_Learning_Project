@@ -1,0 +1,123 @@
+---
+title: "Practical Machine Learning - Final Project"
+author: "Sophia"
+date: "11/30/2021"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+## Introduction
+In this project, our goal will be to use data from accelerometers on the belt, forearm, arm, and dumbell of 6 participants. They were asked to perform barbell lifts correctly and incorrectly in 5 different ways. The questions we need to answer is : how you built your model, how you used cross validation, what you think the expected out of sample error is, and why you made the choices you did. 
+
+## Load data sets
+```{r}
+urltrain <- "https://d396qusza40orc.cloudfront.net/predmachlearn/pml-training.csv"
+urltest <- "https://d396qusza40orc.cloudfront.net/predmachlearn/pml-testing.csv"
+download.file(urltrain, destfile = "pml_training.csv")
+download.file(urltest, destfile = "pml_testing.csv")
+pml_training <- read.csv("pml_training.csv")
+pml_testing <-read.csv("pml_testing.csv")
+```
+
+## Load libraries needed
+```{r results='hide', message=FALSE, warning=FALSE}
+library(caret)
+library(gbm)
+library(rpart)
+library(rattle)
+```
+
+## Cleaning data
+After take a look at the data, we found there are 19622 observations and 160 variables in the original training set. And there are a lot of NAs and "" in the data set, so we need to exclude variables including most NAs and the first 7 variables which are irrelevant to the outcome.
+```{r}
+## cleaning of data sets
+set.seed(1234)
+pml_training_comp<- pml_training[,colMeans(is.na(pml_training)) < .9] ## remove most NA variables
+pml_training_comp<-pml_training_comp[,-c(1:7)] ## remove irrelevant variables to the outcome
+nvz <- nearZeroVar(pml_training_comp) ## remove near sero variance variables
+pml_training_comp<- pml_training_comp[,-nvz]
+dim(pml_training_comp) ## check the dimension of data set
+```
+
+For cross validation, split the training data set to training and testing data sets.
+```{r}
+inTrain <- createDataPartition(y=pml_training_comp$classe, p=0.7,list=FALSE)
+training <- pml_training_comp[inTrain,]
+testing <- pml_training_comp[-inTrain,]
+```
+
+## Models fitting and testing
+In this project, we will build models in three methods: decision tree, random forest, and generalized boosted model, then we will compare the accuracy of these models to select the best one for the prediction.
+
+```{r}
+##instruct train to use 3-fold CV to select optimal tuning parameters
+fitControl <- trainControl(method="cv", number=3, verboseIter=F)
+```
+
+### 1. Decision tree
+```{r}
+set.seed(12345)
+modFit_DT <- train(classe ~., method="rpart", trControl=fitControl, tuneLength = 5, data = training)
+fancyRpartPlot(modFit_DT$finalModel, sub = "")
+```
+
+Prediction
+```{r}
+predDT <- predict(modFit_DT, testing)
+cm_DT <- confusionMatrix(predDT, factor(testing$classe))
+cm_DT
+```
+
+### 2. Random forest
+```{r, cache=TRUE}
+set.seed(12345)
+modFit_RF <- train(classe ~., method="rf", trControl=fitControl, tuneLength = 5, data = training, prox=TRUE)
+```
+
+Prediction
+```{r}
+predRF <- predict(modFit_RF, testing)
+cm_RF <- confusionMatrix(predRF, factor(testing$classe))
+cm_RF
+```
+
+### 3. Generalized boosting model
+```{r,cache=TRUE}
+set.seed(12345)
+modFit_GBM <- train(classe ~., method="gbm", trControl=fitControl, tuneLength = 5, verbose = F, data = training)
+```
+
+Prediction
+```{r}
+predGBM <- predict(modFit_GBM, testing)
+cm_GBM <- confusionMatrix(predGBM, factor(testing$classe))
+cm_GBM
+```
+
+## Accuracy and out of sample errors of three models
+
+                accuracy  oos_error
+         Tree    0.5366    0.4634
+         RF      0.9954    0.0042
+         GBM     0.9925    0.0075
+
+## Conclusion
+
+From the table above, we can draw a conclusion that random forest model fits the data best with 0.9954 accuracy and 0.0042 out of sample error rate. Thus, we use this model to predict on test set.
+
+## Prediction on test set
+```{r}
+predTest <- predict(modFit_RF, pml_testing)
+predTest
+```
+
+## Appendix
+Plotting the models
+```{r}
+plot(modFit_DT, main="Decision Tree Model")
+plot(modFit_RF, main="Radom Forest Model")
+plot(modFit_GBM, main="Generalized Boosting Model")
+```
